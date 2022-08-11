@@ -2,9 +2,9 @@ import os
 import telebot
 from telebot import types
 from csv import writer, reader
-from dbase import engine, session, Users, Stats, Reasons, add_data
+# from dbase import engine, session, Users, Stats, Reasons, add_data
+from dbase import new_session, engine, Users, Stats, Reasons, add_data
 from sqlalchemy import select, and_
-from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone, timedelta
 import time
 import pandas as pd
@@ -35,6 +35,7 @@ def main_menu(message):
 
 @bot.message_handler(commands=["start"])
 def start(message):
+    session = new_session()
     user_exists = session.query(Users).filter(Users.user_id == message.from_user.id).first()
     if not user_exists:
         new_user = Users(
@@ -44,8 +45,37 @@ def start(message):
             username=message.from_user.username
         )
         add_data(new_user)
-        bot.send_message(message.chat.id, "Добро пожаловать!")
+        bot.send_message(message.chat.id, "Привет, жми /help чтобы узнать что умеет этот бот")
     main_menu(message)
+    session.close()
+
+
+@bot.message_handler(commands=["help"])
+def help_command(message):
+    bot.send_message(
+        message.chat.id,
+        "Этого бота я написал для того чтобы он помог мне бросить курить.\n"
+        "Мне нужна статистика когда у меня появляется желание курить.\n"
+        "Так мне будет проще понять от каких сигарет отказываться.\n\n"
+        "Мне лень это записывать в блокнот или Excel, проще через бота пару кнопок "
+        "нажать и он сам заполняет дату, время и причину (по которой захотелось курить).\n\n"
+        "Как этим пользоваться: каждый раз когда появляется желание курить, жми Хочу курить.\n"
+        "Дальше бот спрашивает: 'Идешь курить?' - если идешь, то жми Иду курить и выбирай причину.\n"
+        "В начале причины нужно писать вручную - они будут добавляться в базу и в следующий раз "
+        "предлагаться как кнопки. Со временем большинство твоих причин будут как кнопки.\n"
+        "Но если ты сдержался и не пошёл курить то жми Не иду курить - тогда в статистику это запишется "
+        "как Сдержался.\n"
+        "Вот можешь поставить себе цель чтобы Сдержался было чаще других причин.\n\n"
+        "Также бот умеет показывать 3 графика:\nСигарет в день, Частота причин, По часам.\n\n"
+        # "Нажми на /examples чтобы посмотреть примеры графиков.\n\n"
+        "И если нужна статистика в виде csv файла то жми Скачать статистику.\n\n"
+        "Чтобы начать жми /start")
+
+
+@bot.message_handler(commands=["examples"])
+def examples(message):
+    # TODO через эту команду отправлять 3 картинки с примерами графиков
+    pass
 
 
 @bot.message_handler(content_types=["text"])
@@ -63,6 +93,7 @@ def sub_menus(message):
     elif message.text == "Иду курить":
         # Причина
         # Вытаскиваю причины пользователя с прошлых записей
+        session = new_session()
         reasons = [reason.reason for reason in session.query(Reasons).filter(Reasons.user_id == message.from_user.id)]
         reasons.sort()
         reasons.append("Отмена")
@@ -74,6 +105,7 @@ def sub_menus(message):
             markup.add(itembtn)
         choose_reason = bot.send_message(message.chat.id, "Выбери причину или напиши новую:", reply_markup=markup)
         bot.register_next_step_handler(choose_reason, add_to_stats)
+        session.close()
 
     # 1.2
     elif message.text == "Не иду курить":
@@ -97,6 +129,8 @@ def sub_menus(message):
     elif message.text == "Сигарет в день":
         counter_start = time.perf_counter()
 
+        bot.send_message(message.chat.id, "Пару секунд")
+
         stats_query = select(Stats.date_time, Reasons.reason) \
             .where(Stats.user_id == message.from_user.id) \
             .join_from(Stats, Reasons)
@@ -114,11 +148,12 @@ def sub_menus(message):
         bot.send_photo(message.chat.id, image_out)
 
         counter_end = time.perf_counter()
-        print(f"График 'Сигарет в день': {round((counter_end - counter_start), 3)} сек.")
+        print(f"{datetime.now()} График 'Сигарет в день': {round((counter_end - counter_start), 3)} сек.")
 
     # 2.2
     elif message.text == "Частота причин":
         counter_start = time.perf_counter()
+        bot.send_message(message.chat.id, "Пару секунд")
 
         stats_query = select(Stats.reason_id, Reasons.reason) \
             .where(Stats.user_id == message.from_user.id) \
@@ -140,11 +175,12 @@ def sub_menus(message):
         bot.send_photo(message.chat.id, image_out)
 
         counter_end = time.perf_counter()
-        print(f"График 'Частота причин': {round((counter_end - counter_start), 3)} сек.")
+        print(f"{datetime.now()} График 'Частота причин': {round((counter_end - counter_start), 3)} сек.")
 
     # 2.3
     elif message.text == "По часам":
         counter_start = time.perf_counter()
+        bot.send_message(message.chat.id, "Пару секунд")
 
         stats_query = select(Stats.date_time) \
             .where(Stats.user_id == message.from_user.id)
@@ -165,10 +201,11 @@ def sub_menus(message):
         bot.send_photo(message.chat.id, image_out)
 
         counter_end = time.perf_counter()
-        print(f"График 'Сигарет в день': {round((counter_end - counter_start), 3)} сек.")
+        print(f"{datetime.now()} График 'Сигарет в день': {round((counter_end - counter_start), 3)} сек.")
 
     # 3
     elif message.text == "Скачать статистику":
+        session = new_session()
         stats_query = session.query(Stats) \
             .filter(Stats.user_id == message.from_user.id) \
             .join(Reasons, Stats.reason_id == Reasons.id).all()
@@ -182,6 +219,7 @@ def sub_menus(message):
         bot.send_document(message.chat.id,
                           document=open("stats.csv", "rb"),
                           visible_file_name="Статистика.csv")
+        session.close()
 
 
 # Добавление новой записи
@@ -194,6 +232,7 @@ def add_to_stats(message):
         return main_menu(message)
 
     # Проверяю существует ли уже такая Причина
+    session = new_session()
     reason_exists = session.query(Reasons) \
         .filter(and_(Reasons.reason == reason, Reasons.user_id == message.from_user.id)) \
         .first()
@@ -221,6 +260,7 @@ def add_to_stats(message):
 
     bot.send_message(message.chat.id, text=f"Ок, записал")
     main_menu(message)
+    session.close()
 
 
 bot.polling(none_stop=True)

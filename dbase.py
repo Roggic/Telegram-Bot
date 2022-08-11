@@ -7,11 +7,14 @@ import datetime
 
 engine = create_engine("sqlite:///habit_stats.sqlite")
 
+
+def new_session():
+    engine = create_engine("sqlite:///habit_stats.sqlite")
+    Session = sessionmaker(engine)
+    session = Session()
+    return session
+
 Base = declarative_base()
-
-Session = sessionmaker(engine)
-session = Session()
-
 
 class Users(Base):
     __tablename__ = "users"
@@ -58,8 +61,11 @@ Base.metadata.create_all(engine)
 
 def add_data(new_data):
     """Добавляет новые данные в базу данных. new_data должна быть объектом таблицы (новая строка)"""
+    session = new_session()
     session.add(new_data)
     session.commit()
+    session.close()
+
 
 # Пример заполнения таблицы
 # session_maker = sessionmaker(bind=engine)
