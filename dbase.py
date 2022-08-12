@@ -14,7 +14,9 @@ def new_session():
     session = Session()
     return session
 
+
 Base = declarative_base()
+
 
 class Users(Base):
     __tablename__ = "users"
@@ -65,16 +67,3 @@ def add_data(new_data):
     session.add(new_data)
     session.commit()
     session.close()
-
-
-# Пример заполнения таблицы
-# session_maker = sessionmaker(bind=engine)
-# session = session_maker()
-# date_time = datetime.datetime.now()
-# user_id = "roggic"
-# reason_id = 1
-# new_row = Stats(date_time=date_time,
-#                 user_id=user_id,
-#                 reason_id=reason_id)
-# session.add(new_row)
-# session.commit()
